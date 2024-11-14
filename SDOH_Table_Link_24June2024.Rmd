@@ -1,0 +1,155 @@
+---
+title: "SDOH_Table_Link_24June2024"
+author: "Caitlin Banks"
+date: "2024-06-24"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+  pdf_document:
+      toc: true
+---
+# How To Run This Code
+- Set up your config file and save it in your working directory. Label it 'SDOH_Link_Config.csv' or change line 66
+- Run code chunks one at a time, do not Knit or Run All
+- Run Step 1
+- Decide whether you need to pull the data from PMAP (hint: you probably don't, and it takes a long time) or not. 
+- - If yes-->Run Step 2a and skip Step 2b
+- - If no-->Skip Step 2a and run Step 2b
+- Run Steps 3-6, loading in your own cohort data and labeling that dataframe 'cohort'
+
+# Purpose
+
+-Purpose: The purpose of this code is to link the Social Determinants of Health (SDOH) tables created by Kate Fitzgerald with cohort data for a project.
+
+-I intend for this to be generalizable so that it can be used for future rehab PMCOE projects
+
+-The SDOH data live in the PMAP_Dictionaries_Projection under the following tables: <br/>
+  1. sdoh_dbgl_2010_census
+  2. sdoh_dbgl_2020_census
+
+-You can find out more about the metrics by viewing the sdoh_dict_bgl_2010_census and sdoh_dict_2020_census, respectively.
+
+-Individuals are then linked to this data by the edw_geocode_patient, edw_geocode_patient_visit, and derived_geocode_patient_visit_changes tables. <br/>
+
+
+# Step 1. Setup
+
+This code uses a config file to input select variables including the database name and server, tables from PMAP dictionaries projection, and tables from your PrecisionRehab cohort.
+<br/>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, include=TRUE, message=FALSE,warning=FALSE)
+
+options(scipen = 999)
+
+require(RODBC)
+require(knitr)
+require(dplyr)
+require(tidyverse)
+```
+
+```{r Read Config File}
+config <-read.csv('SDOH_Link_Config.csv')
+```
+
+# Step 2a. Pull PMAP Tables
+You can probaly skip to Step 2b (load existing tables) because these don't really change. But if you need to pull them fresh from PMAP, run chunks 2a.1-3.
+
+## 2a.1. Connect to PMAP
+```{r PMAP connection, include=FALSE}
+Sys.setenv(JHED = rstudioapi::showPrompt(title = 'JHED', message = 'Enter your JHED ID: '))
+Sys.setenv(JHED_PWD = rstudioapi::askForPassword(""))
+
+server=as.character(config%>%filter(name=='server')%>%distinct(variable))
+db_name=as.character(config%>%filter(name=='database')%>%distinct(variable))
+
+
+pwd = Sys.getenv("JHED_PWD")
+stopifnot(nzchar(pwd))
+JHED = Sys.getenv("JHED")
+stopifnot(nzchar(pwd))
+
+# Comment out above 4 lines and hard-code your JHED and pwd if knitting file
+#JHED <- "YOUR_JHED"
+#pwd <- "JHED_PASSWORD"
+
+# Connect to CVA
+connectionString <- paste0("Driver=freeTDS;TDS_Version=8.0;",'Server=',server,';Port=1433;Database=',
+                            db_name,'; Uid=win\\',JHED,
+                            ';Pwd=',pwd)
+
+con <- odbcDriverConnect(connection=connectionString)
+
+rm(pwd)
+rm(JHED)
+rm(connectionString)
+
+today<-Sys.Date()
+```
+
+## 2a.2. Pull PMAP tables from config file
+```{r PMAP Tables}
+ # Pulling tables from config file
+tables <- config %>% filter(name=='table')
+df_names <- tables$meaning
+
+for (i in seq(1:nrow(tables))) {
+ df<-sqlFetch(con,tables$variable[i])
+ assign(df_names[i],df)
+ }
+
+```
+
+## 2a.3. Save Tables
+```{r Save Tables}
+path <- getwd()
+save(census_measures_2010,census_measures_2020,file=paste(path,"/SDOH Tables/SDOH_tables_",today,".Rdata",sep=''))
+```
+
+# Step 2b. Load Existing Tables
+Use This Section to Load Census Tables From Rdata File. Mine are located here: "/home/idies/workspace/Storage/mfrenc11/Health Disparities/SDOH Tables/SDOH_tables_2024-10-29.Rdata"
+```{r Load Tables After Pull}
+load(file.choose())
+```
+
+# Step 4. Reduce Tables
+
+```{r Reduce Tables}
+meas_2010 <- config %>% filter(name == 'measure2010') %>% pull(variable)
+selected_columns_2010 <- census_measures_2010 %>% 
+    select(GEOID, BLOCKGROUP_NAME, STATE, ST_ABBR, COUNTY, all_of(meas_2010))
+
+meas_2020 <- config %>% filter(name == 'measure2020') %>% pull(variable)
+selected_columns_2020 <- census_measures_2020 %>% 
+    select(GEOID, BLOCKGROUP_NAME, STATE, ST_ABBR, COUNTY, all_of(meas_2020)) 
+```
+
+# Step 5. Link SDOH tables to your cohort data
+Run the chunk below and select your cohort data. E.g., mine can be found here: "/home/idies/workspace/Storage/mfrenc11/Health Disparities/SDOH Cohort Data/DATA_FILE_NAME.Rdata"
+```{r Load Cohort Data}
+load(file.choose())
+```
+
+```{r Join Cohort Data and SDOH Variables}
+cohort_sdoh_2010 <- selected_columns_2010 %>% filter(GEOID %in% cohort$geoid_2010)
+
+cohort_sdoh_2010 <- left_join(cohort %>% select(osler_id,pat_enc_csn_id,geoid_2010,geoid_2020),selected_columns_2010, by=c('geoid_2010'='GEOID'))
+
+cohort_sdoh_2020 <- left_join(cohort %>% select(osler_id,pat_enc_csn_id,geoid_2010,geoid_2020),selected_columns_2020, by=c('geoid_2020'='GEOID'))
+```
+
+# Step 6. Save your data
+You can adjust the data path in the first line of this chunk and/or adjust the save.image() line to specify where you're saving your data
+```{r Save cohort SDOH data}
+path<-getwd()
+today<-Sys.Date()
+
+rm(sdoh_dbgl_2010_census)
+rm(sdoh_dbgl_2020_census)
+rm(config)
+rm(tables)
+rm(df_names)
+
+save.image(file=paste(path,"/SDOH Cohort Data/",today,"_SDOH_PMAP_data_table_linked.Rdata", sep=''))
+```
