@@ -1,0 +1,17 @@
+﻿name,variable,meaning
+server,****,PMAP server - fill in with the Server Name you access
+database,PMAP_Dictionaries_Projection,sdoh_database
+table,sdoh_dbgl_2010_census,census_measures_2010
+table,sdoh_dbgl_2020_census,census_measures_2020
+info,GEOID,measures_shared
+info,BLOCKGROUP_NAME,measures_shared
+info,STATE,measures_shared
+info,ST_ABBR,measures_shared
+info,COUNTY,measures_shared
+measure2010,adi_nat_2015,national_adi_pctle_2011_2015
+measure2010,adi_state_2015,state_adi_decile_2011_2015
+measure2010,svi_2016,svi_pctle_2016
+measure2010,svi_2018,svi_pctle_2018
+measure2020,adi_nat_2020,national_adi_pctle_2016_2020
+measure2020,adi_state_2020,state_adi_decile_2016_2020
+measure2020,svi_2020,svi_pctle_2020
